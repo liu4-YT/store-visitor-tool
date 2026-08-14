@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>门店到店人数预估工具</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#fff; --primary:#2f6fed; --primary-dark:#1f54c4;
+    --border:#e3e8ef; --text:#1f2937; --muted:#6b7280; --ok:#16a34a; --warn:#d97706; --danger:#dc2626; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); line-height:1.5; }
+  .wrap { max-width:1120px; margin:0 auto; padding:24px 16px 60px; }
+  header h1 { font-size:22px; margin:0 0 4px; }
+  header p { color:var(--muted); margin:0 0 20px; font-size:14px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .card h2 { font-size:16px; margin:0 0 14px; display:flex; align-items:center; gap:8px; }
+  .card h2 .step { background:var(--primary); color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:13px; }
+  .row { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; }
+  .field { display:flex; flex-direction:column; gap:6px; }
+  .field label { font-size:13px; color:var(--muted); }
+  input[type=text], input[type=number], select { padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; background:#fff; min-width:150px; }
+  button { cursor:pointer; border:none; border-radius:8px; padding:9px 16px; font-size:14px; font-weight:500; background:var(--primary); color:#fff; transition:background .15s; }
+  button:hover { background:var(--primary-dark); }
+  button.secondary { background:#eef2ff; color:var(--primary); }
+  button.secondary:hover { background:#e0e7ff; }
+  button.ghost { background:transparent; color:var(--muted); border:1px solid var(--border); }
+  button.ghost:hover { background:#f3f4f6; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+  th,td { border:1px solid var(--border); padding:8px 10px; text-align:left; }
+  th { background:#f8fafc; font-weight:600; }
+  td.num,th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  .coeff-table input[type=text]{ min-width:170px; }
+  .coeff-table .kw { font-size:12px; color:var(--muted); }
+  .coeff-table .del { color:var(--danger); cursor:pointer; background:none; border:none; padding:0; font-size:13px; }
+  .coeff-table .prio { width:64px; }
+  .hint { font-size:12px; color:var(--muted); margin-top:8px; }
+  .summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-top:6px; }
+  .stat { background:#f8fafc; border:1px solid var(--border); border-radius:10px; padding:14px; }
+  .stat .v { font-size:26px; font-weight:700; color:var(--primary); }
+  .stat .l { font-size:12px; color:var(--muted); margin-top:2px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
+  .badge.ok { background:#dcfce7; color:var(--ok); }
+  .badge.warn { background:#fef3c7; color:var(--warn); }
+  .hidden { display:none; }
+  .file-name { font-size:13px; color:var(--muted); margin-left:8px; }
+  .log { font-size:12px; margin-top:8px; max-height:140px; overflow:auto; }
+  .log div { padding:2px 0; }
+  footer { font-size:12px; color:var(--muted); text-align:center; margin-top:30px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; background:#f1f5f9; font-size:12px; color:var(--muted); }
+  .pill .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); }
+  .seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .seg button { background:#fff; color:var(--text); border:none; border-radius:0; padding:7px 12px; font-size:13px; }
+  .seg button.active { background:var(--primary); color:#fff; }
+  .note { background:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 12px; border-radius:8px; font-size:13px; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>门店到店人数预估工具</h1>
+    <p>支持团购核销明细 与 抖音核销 两种数据源，导入后按公式预估到店人数并导出</p>
+  </header>
+
+  <!-- 每日核销汇总 -->
+  <section class="card">
+    <h2><span class="step">★</span>每日订单数对比（按日期：抖音/美团订单数 + 总核销数 + 到店人数）</h2>
+    <p class="hint">分别上传「美团经营宝」和「抖音来客」导出的核销明细，系统自动识别日期、商品名、消费/核销时间，使用上方「类型与系数」配置统计每日抖音/美团核销订单数、总核销数、预计到店人数，以及 18:00 之后到店人数。</p>
+    <div class="row">
+      <div class="field">
+        <label>美团核销明细（商品信息 + 消费时间）</label>
+        <input type="file" id="mtInput" accept=".xlsx,.xls" multiple />
+      </div>
+      <div class="field">
+        <label>抖音核销明细（商品名称 + 核销时间，每条=1券）</label>
+        <input type="file" id="dyInput" accept=".xlsx,.xls" multiple />
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px;align-items:center;">
+      <div class="field">
+        <label>美团列名识别</label>
+        <input type="text" id="mtInfoCol" value="商品信息" style="min-width:120px" title="商品信息列名"/>
+        <input type="text" id="mtTimeCol" value="消费时间" style="min-width:120px" title="消费时间列名"/>
+      </div>
+      <div class="field">
+        <label>抖音列名识别</label>
+        <input type="text" id="dyInfoCol" value="商品名称" style="min-width:120px" title="商品名称列名"/>
+        <input type="text" id="dyTimeCol" value="核销时间" style="min-width:120px" title="核销时间列名"/>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:12px;">
+      <button id="calcDailyBtn">汇总每日数据</button>
+      <button class="secondary" id="loadDailyBtn">导入历史汇总表</button>
+      <button class="ghost" id="exportDailyBtn" disabled>导出每日汇总表</button>
+      <button class="ghost" id="copyDailyBtn" disabled>复制为飞书文档表格</button>
+    </div>
+    <div class="note" style="margin-top:10px;">
+      说明：1) 文件名含日期会优先识别为当日；否则取表内「消费/核销时间」的日期。2) 撤销核销的行也会计入（只要表格里有这一行就算）。3) 美团每行视为 1 个核销订单；抖音每条=1个核销订单（不管购买数量）。4) 18:00 之后到店人数按消费/核销时间 ≥ 18:00 累加。5) 总核销数 = 抖音核销订单 + 美团核销订单。
+    </div>
+    <div id="dailyLog" class="log"></div>
+    <div id="dailyTableBox" class="hidden" style="margin-top:14px;"></div>
+  </section>
+
+  <!-- 步骤0：数据源 -->
+  <section class="card">
+    <h2><span class="step">0</span>选择数据源类型</h2>
+    <div class="seg" id="srcMode">
+      <button data-v="group" class="active">团购核销（关键词匹配，按笔数）</button>
+      <button data-v="douyin">抖音核销（以券数量为准）</button>
+    </div>
+    <div class="note hidden" id="srcNote"></div>
+    <div class="hint" id="mergeStatus" style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <span class="pill" id="pillGroup"><span class="dot" style="background:#d1d5db"></span> 团购：未计算</span>
+      <span class="pill" id="pillDouyin"><span class="dot" style="background:#d1d5db"></span> 抖音：未计算</span>
+    </div>
+  </section>
+
+  <!-- 步骤1：类型配置 -->
+  <section class="card">
+    <h2><span class="step">1</span>配置商品类型（优先级 + 关键词 + 系数）</h2>
+    <p class="hint" id="cfgHint"></p>
+    <table class="coeff-table" id="coeffTable">
+      <thead>
+        <tr>
+          <th>类型名称</th>
+          <th class="num">优先级</th>
+          <th>识别关键词（逗号分隔）</th>
+          <th class="num">系数（每人/单位）</th>
+          <th>人数/项目</th>
+          <th style="width:60px"></th>
+        </tr>
+      </thead>
+      <tbody id="coeffBody"></tbody>
+    </table>
+    <div class="btn-row">
+      <button class="secondary" id="addCoeff">+ 添加类型</button>
+      <button class="ghost" id="resetCoeff">恢复默认</button>
+    </div>
+    <div class="hint">「人数/项目」列：团购模式下，"人数"类型（如单人/双人）先决定到店人数，"项目"类型（如KTV/麻将）仅当某行不含任何人数关键词时才计入（避免套餐名里堆的项目词被重复加人）。优先级数字越小越优先匹配（如"双人"设 1 会先于"单人"命中）。抖音模式下"关键词"用于把商品名归类到该类型；若抖音表已有明确类型列可留空，直接用列值匹配类型名。</div>
+  </section>
+
+  <!-- 步骤2：导入 -->
+  <section class="card">
+    <h2><span class="step">2</span>导入核销 Excel</h2>
+    <div class="row">
+      <div class="field">
+        <label>Excel 文件（.xlsx / .xls）</label>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" />
+      </div>
+      <div class="field" id="infoColField">
+        <label id="infoColLabel">商品信息列（团购进项）</label>
+        <input type="text" id="infoCol" value="商品信息" />
+      </div>
+      <div class="field">
+        <label>门店列（留空则整体汇总）</label>
+        <input type="text" id="storeCol" value="验证门店" />
+      </div>
+    </div>
+    <div class="row hidden" id="dyQtyField" style="margin-top:12px;">
+      <div class="field" id="dyTypeColField">
+        <label>抖音类型列（可选，留空则用关键词匹配商品名）</label>
+        <input type="text" id="dyTypeCol" placeholder="如：商品名称" />
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:12px;">
+      <button id="calcBtn" disabled>开始计算</button>
+      <button class="secondary" id="previewBtn" disabled>预览每行归类</button>
+      <button class="ghost" id="sampleBtn">下载示例模板</button>
+      <span class="file-name" id="fileName"></span>
+    </div>
+    <div class="note" style="margin-top:10px;">
+      提示：商品信息里只要含更高优先级类型的关键词（如“双人”）就会优先归该类。点“预览每行归类”可逐行核对分类是否正确，再决定是否计算。
+    </div>
+    <div class="log" id="log"></div>
+  </section>
+
+  <!-- 步骤3：结果 -->
+  <section class="card hidden" id="resultCard">
+    <h2><span class="step">3</span>预估结果</h2>
+    <div class="summary" id="summary"></div>
+    <div class="btn-row" style="margin-top:14px;">
+      <button id="exportBtn">导出当前结果 Excel</button>
+      <button class="secondary" id="mergeBtn" disabled>合并团购+抖音导出 Excel</button>
+    </div>
+    <div id="resultTables"></div>
+    <div id="previewBox" class="hidden">
+      <h3 style="font-size:14px; margin-top:18px;">逐行归类预览（共 <span id="previewCount">0</span> 行）</h3>
+      <div style="max-height:320px; overflow:auto; border:1px solid var(--border); border-radius:8px;">
+        <table id="previewTable"><thead><tr>
+          <th>#</th><th>门店</th><th>商品信息/名称</th><th>归类结果</th><th>命中关键词</th><th class="num">人数/数量</th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span class="pill"><span class="dot"></span> 本地运行，数据不上传</span>
+    &nbsp;·&nbsp; 解析依赖 SheetJS (xlsx)
+  </footer>
+</div>
+
+<script src="xlsx.full.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  // 团购默认：带优先级，双人 > 单人 > KTV > 麻将房。
+  // 关键：单人券关键词只保留精准词（单人/1人），不放“全天/畅玩/拼豆”等泛词，
+  // 避免把含“拼豆”但本应算其他的行误吸。双人优先级最高，含“双人”立即判定为双人券。
+  // kind: "headcount" = 决定到店人数（单人/双人）；"addon" = 项目类型（KTV/麻将等），
+  // 仅当某行不含任何 headcount 关键词时，才作为独立核销行计入。
+  const DEFAULT_GROUP = [
+    { name:"双人特惠", priority:1, keywords:["双人","2人","两人"], coeff:2, kind:"headcount" },
+    { name:"单人票",   priority:2, keywords:["单人","1人","拼豆"], coeff:1, kind:"headcount" },
+    { name:"K歌包间",  priority:3, keywords:["K歌","KTV","唱歌","包厢"], coeff:6, kind:"addon" },
+    { name:"棋牌包间", priority:4, keywords:["麻将","棋牌"], coeff:4, kind:"addon" },
+  ];
+  // 抖音默认：商品列 = 团购的商品信息列逻辑，以核销数量计
+  const DEFAULT_DOUYIN = JSON.parse(JSON.stringify(DEFAULT_GROUP));
+
+  let srcMode = "group";
+  let typeList = JSON.parse(JSON.stringify(DEFAULT_GROUP));
+  let rawRows = [];
+  let lastResult = null;
+  // 分别保存团购 / 抖音计算结果，用于最终合并导出
+  const savedResults = { group:null, douyin:null };
+
+  const $ = (id)=>document.getElementById(id);
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function fmt(n){ return (Math.round(n*100)/100).toLocaleString('zh-CN'); }
+  function fmtMD(iso){
+    if(!iso || iso==="未知日期") return iso;
+    const m=iso.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+    return m? `${parseInt(m[2],10)}.${m[3]}` : iso;
+  }
+  function log(msg,type){ const el=$("log"); const d=document.createElement("div"); d.textContent=msg;
+    if(type==="warn") d.style.color="var(--warn)"; if(type==="danger") d.style.color="var(--danger)"; if(type==="ok") d.style.color="var(--ok)";
+    el.appendChild(d); }
+  function clearLog(){ $("log").innerHTML=""; }
+
+  // 数据源切换
+  $("srcMode").querySelectorAll("button").forEach(b=>{
+    b.addEventListener("click",()=>{
+      $("srcMode").querySelectorAll("button").forEach(x=>x.classList.remove("active"));
+      b.classList.add("active");
+      srcMode = b.dataset.v;
+      typeList = JSON.parse(JSON.stringify(srcMode==="group"?DEFAULT_GROUP:DEFAULT_DOUYIN));
+      renderTypes(); applySrcUI();
+    });
+  });
+
+  function applySrcUI(){
+    const isGroup = srcMode==="group";
+    $("infoColLabel").textContent = isGroup? "商品信息列（团购进项）" : "商品列（抖音）";
+    $("infoCol").value = isGroup? "商品信息" : "商品";
+    $("dyQtyField").classList.toggle("hidden", isGroup);
+    $("cfgHint").textContent = isGroup
+      ? "团购模式：每行是一次核销，无数量列，数量=匹配到的笔数。先按「人数」类型（单人/双人）定到店人数，套餐名里的KTV/麻将等项目描述不额外计入；仅当某行无任何人数关键词时，才按「项目」类型（KTV/麻将）作为独立核销计入。"
+      : "抖音模式：每条=1券（不管购买数量），预估人数 = 1 × 系数。可用关键词把商品名归类，或用类型列直接匹配类型名。";
+    $("srcNote").classList.toggle("hidden", isGroup);
+    if(!isGroup) $("srcNote").textContent = '抖音模式说明：若表格有「类型/商品名」列，请在下方填写，将直接按类型名列的值匹配上面的类型名；否则用关键词匹配商品名。每条=1券，无需数量列。';
+  }
+
+  // ===== 全局匹配函数（实时基于当前 typeList，确保网页改关键词立即生效）=====
+  function getSortedTypes(){
+    return [...typeList].sort((a,b)=>(a.priority||99)-(b.priority||99));
+  }
+  // 返回 {name, kw}；按优先级严格短路，命中即停
+  function classifyDetail(txt){
+    const t=String(txt||"").toLowerCase();
+    for(const c of getSortedTypes()){
+      for(const kw of c.keywords){ if(kw && t.includes(kw.toLowerCase())) return {name:c.name, kw:kw}; }
+    }
+    return null;
+  }
+  function classifyByKw(txt){
+    const d=classifyDetail(txt); return d? d.name : null;
+  }
+  // 团购分类：先在所有"人数类型"(headcount)里按优先级找命中（决定到店人数），
+  // 套餐名里的 KTV/麻将等项目描述词不额外计入；仅当该行无任何人数关键词时，
+  // 才去匹配"项目类型"(addon)，作为独立 KTV/麻将核销行处理。
+  function classifyGroup(txt){
+    const t=String(txt||"").toLowerCase();
+    const sorted=[...typeList].sort((a,b)=>(a.priority||99)-(b.priority||99));
+    const heads=sorted.filter(c=>c.kind!=="addon");
+    const adds=sorted.filter(c=>c.kind==="addon");
+    for(const c of heads){
+      for(const kw of c.keywords){ if(kw && t.includes(kw.toLowerCase())) return {name:c.name, kw:kw}; }
+    }
+    for(const c of adds){
+      for(const kw of c.keywords){ if(kw && t.includes(kw.toLowerCase())) return {name:c.name, kw:kw}; }
+    }
+    return null;
+  }
+
+  // 渲染类型表
+  function renderTypes(){
+    const body=$("coeffBody"); body.innerHTML="";
+    typeList.forEach((c,i)=>{
+      const tr=document.createElement("tr");
+      tr.innerHTML=`
+        <td><input type="text" value="${escapeHtml(c.name)}" data-i="${i}" data-k="name" placeholder="类型名"/></td>
+        <td class="num"><input class="prio" type="number" min="0" value="${c.priority}" data-i="${i}" data-k="priority"/></td>
+        <td><input type="text" value="${escapeHtml(c.keywords.join(","))}" data-i="${i}" data-k="keywords" placeholder="关键词1,关键词2"/></td>
+        <td class="num"><input type="number" step="any" min="0" value="${c.coeff}" data-i="${i}" data-k="coeff"/></td>
+        <td><select data-i="${i}" data-k="kind">
+          <option value="headcount"${c.kind!=="addon"?" selected":""}>人数</option>
+          <option value="addon"${c.kind==="addon"?" selected":""}>项目</option>
+        </select></td>
+        <td><button class="del" data-i="${i}">删除</button></td>`;
+      body.appendChild(tr);
+    });
+    body.querySelectorAll("input").forEach(inp=>{
+      inp.addEventListener("input",(e)=>{
+        const i=+e.target.dataset.i, k=e.target.dataset.k;
+        if(k==="keywords") typeList[i].keywords=e.target.value.split(",").map(s=>s.trim()).filter(Boolean);
+        else if(k==="coeff") typeList[i].coeff=parseFloat(e.target.value)||0;
+        else if(k==="priority") typeList[i].priority=parseInt(e.target.value)||0;
+        else if(k==="kind") typeList[i].kind=e.target.value;
+        else typeList[i].name=e.target.value;
+      });
+    });
+    body.querySelectorAll(".del").forEach(btn=>{
+      btn.addEventListener("click",(e)=>{ typeList.splice(+e.target.dataset.i,1); renderTypes(); });
+    });
+  }
+
+  // 文件解析
+  $("fileInput").addEventListener("change",(e)=>{
+    const f=e.target.files[0];
+    if(!f){ $("fileName").textContent=""; $("calcBtn").disabled=true; return; }
+    $("fileName").textContent="已选择："+f.name; clearLog(); log("正在读取文件…");
+    if(typeof XLSX==="undefined"){ log("⚠ 解析库未加载（可能离线）。请联网后刷新页面。","danger"); return; }
+    const reader=new FileReader();
+    reader.onload=(ev)=>{
+      try{
+        const wb=XLSX.read(new Uint8Array(ev.target.result),{type:"array"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        rawRows=XLSX.utils.sheet_to_json(ws,{defval:""});
+        if(!rawRows.length){ log("⚠ 文件中没有可读的数据行。","danger"); $("calcBtn").disabled=true; return; }
+        log("✓ 已读取 "+rawRows.length+" 行数据。表头："+Object.keys(rawRows[0]).join("、"),"ok");
+        $("calcBtn").disabled=false;
+        $("previewBtn").disabled=false;
+      }catch(err){ log("✗ 读取失败："+err.message,"danger"); $("calcBtn").disabled=true; }
+    };
+    reader.readAsArrayBuffer(f);
+  });
+
+  // 预览每行归类（不改变计算，仅展示分类结果便于核对）
+  $("previewBtn").addEventListener("click",()=>{
+    clearLog();
+    const infoCol=($("infoCol").value||"").trim();
+    const storeCol=($("storeCol").value||"").trim();
+    const keys=Object.keys(rawRows[0]);
+    const findKey=(n)=>{
+      if(!n) return null;
+      const exact=keys.find(k=>k.trim()===n);
+      if(exact) return exact;
+      const lower=n.trim().toLowerCase();
+      return keys.find(k=>k.trim().toLowerCase().includes(lower)||lower.includes(k.trim().toLowerCase()));
+    };
+    const iKey=findKey(infoCol), sKey=storeCol?findKey(storeCol):null;
+    if(!iKey){ log("✗ 找不到商品信息/名称列「"+infoCol+"」。","danger"); return; }
+    const tbody=$("previewTable").querySelector("tbody");
+    tbody.innerHTML="";
+    let unmatched=0;
+    const kindAgg=new Map(); // 种类汇总（笔数/数量 + 人数）
+    rawRows.forEach((r,idx)=>{
+      const store=sKey?(String(r[sKey]==null?"":r[sKey]).trim()||"（未填写门店）"):"—";
+      const info=String(r[iKey]||"");
+      const d = srcMode==="group" ? classifyGroup(info) : classifyDetail(info);
+      const tr=document.createElement("tr");
+      if(d){
+        const tdef=typeList.find(c=>c.name===d.name);
+        let people=0;
+        if(srcMode==="group"){ people = tdef? tdef.coeff : 0; }
+        else { people = 1*(tdef?tdef.coeff:0); }
+        if(!kindAgg.has(d.name)) kindAgg.set(d.name,{units:0,people:0});
+        const ka=kindAgg.get(d.name); ka.units+= 1; ka.people+=people;
+        tr.innerHTML=`<td class="num">${idx+1}</td><td>${escapeHtml(store)}</td><td>${escapeHtml(info.slice(0,60))}</td>
+          <td><span class="badge ok">${escapeHtml(d.name)}</span></td><td>${escapeHtml(d.kw)}</td><td class="num">${people}</td>`;
+      } else {
+        unmatched++;
+        tr.innerHTML=`<td class="num">${idx+1}</td><td>${escapeHtml(store)}</td><td>${escapeHtml(info.slice(0,60))}</td>
+          <td><span class="badge warn">未匹配</span></td><td>—</td><td class="num">0</td>`;
+      }
+      tbody.appendChild(tr);
+    });
+    $("previewCount").textContent=rawRows.length;
+    $("previewBox").classList.remove("hidden");
+    $("resultCard").classList.remove("hidden");
+    // 预览内也展示按种类统计数量（团购核心项）
+    let kbox=$("previewKindBox");
+    if(!kbox){
+      kbox=document.createElement("div"); kbox.id="previewKindBox";
+      kbox.style.marginTop="14px";
+      $("previewBox").appendChild(kbox);
+    }
+    const ul = srcMode==="group"?"笔数":"数量";
+    kbox.innerHTML=`<h4 style="font-size:13px;margin:0 0 6px;color:var(--muted)">按种类统计数量（团购核心项）</h4>
+      <table style="width:auto"><thead><tr><th>商品类型</th><th class="num">核销${ul}</th><th class="num">人数</th></tr></thead><tbody>`+
+      [...kindAgg.entries()].map(([t,k])=>`<tr><td>${escapeHtml(t)}</td><td class="num">${fmt(k.units)}</td><td class="num">${fmt(k.people)}</td></tr>`).join("")+
+      `<tr style="font-weight:700;background:#f1f5f9"><td>合计</td><td class="num">${fmt([...kindAgg.values()].reduce((a,b)=>a+b.units,0))}</td><td class="num">${fmt([...kindAgg.values()].reduce((a,b)=>a+b.people,0))}</td></tr></tbody></table>`;
+    log("✓ 预览完成，共 "+rawRows.length+" 行，未匹配 "+unmatched+" 行"+(unmatched?"（黄色=未匹配，请检查关键词）":"。"), unmatched?"warn":"ok");
+  });
+
+  // 计算
+  $("calcBtn").addEventListener("click",()=>{
+    clearLog();
+    const infoCol=($("infoCol").value||"").trim();
+    const storeCol=($("storeCol").value||"").trim();
+    const dyTypeCol=($("dyTypeCol").value||"").trim();
+
+    const keys=Object.keys(rawRows[0]);
+    const findKey=(n)=>{
+      if(!n) return null;
+      const exact=keys.find(k=>k.trim()===n);
+      if(exact) return exact;
+      const lower=n.trim().toLowerCase();
+      return keys.find(k=>k.trim().toLowerCase().includes(lower)||lower.includes(k.trim().toLowerCase()));
+    };
+    const iKey=findKey(infoCol), sKey=storeCol?findKey(storeCol):null;
+
+    if(!iKey){ log("✗ 找不到商品信息/名称列「"+infoCol+"」。实际表头："+keys.join("、"),"danger"); return; }
+    if(storeCol && !sKey){ log("⚠ 找不到门店列「"+storeCol+"」，将按整体汇总。","warn"); }
+
+    // 抖音：用类型列直接匹配类型名（基于当前 typeList）
+    function classifyByTypeCol(val){
+      const v=String(val||"").trim().toLowerCase();
+      for(const c of typeList){ if(c.name.trim().toLowerCase()===v) return c.name; }
+      return null;
+    }
+
+    const isGroup = srcMode==="group";
+    const groups=new Map();
+    const rowDetails=[]; // 逐行明细，用于展示全部原始核销
+    let matched=0, unmatched=0, unmatchedSamples=[];
+
+    if(isGroup){
+      // 团购：数量=笔数
+      rawRows.forEach(r=>{
+        const store=sKey?(String(r[sKey]==null?"":r[sKey]).trim()||"（未填写门店）"):"__ALL__";
+        const gd=classifyGroup(r[iKey]); const cls=gd?gd.name:null;
+        const info=String(r[iKey]||"");
+        if(!cls){ unmatched++; if(unmatchedSamples.length<5) unmatchedSamples.push(String(r[iKey]||"").slice(0,40));
+          rowDetails.push({store, info, cls:null, kw:null}); return; }
+        const tdef=typeList.find(c=>c.name===cls);
+        rowDetails.push({store, info, cls, kw:gd.kw, coeff:tdef?tdef.coeff:0});
+        matched++;
+        if(!groups.has(store)) groups.set(store,new Map());
+        const g=groups.get(store);
+        g.set(cls,(g.get(cls)||0)+1); // 笔数累加
+      });
+    } else {
+      // 抖音：每条=1券（不管购买数量）
+      const tKey = dyTypeCol? findKey(dyTypeCol): null;
+      if(dyTypeCol && !tKey){ log("⚠ 找不到抖音类型列「"+dyTypeCol+"」，改用关键词匹配商品名。","warn"); }
+      rawRows.forEach(r=>{
+        const store=sKey?(String(r[sKey]==null?"":r[sKey]).trim()||"（未填写门店）"):"__ALL__";
+        let cls = (tKey)? classifyByTypeCol(r[tKey]) : null;
+        if(!cls) cls = classifyByKw(r[iKey]);
+        if(!cls){ unmatched++; if(unmatchedSamples.length<5) unmatchedSamples.push(String(r[iKey]||"").slice(0,40)); return; }
+        matched++;
+        if(!groups.has(store)) groups.set(store,new Map());
+        const g=groups.get(store);
+        g.set(cls,(g.get(cls)||0)+1); // 每条=1券
+      });
+    }
+
+    const unitLabel = isGroup? "笔数":"笔数";
+    const result=[]; let grandTotal=0, grandUnits=0;
+    groups.forEach((g,store)=>{
+      g.forEach((units,type)=>{
+        const tdef=typeList.find(c=>c.name===type);
+        const coeff=tdef?tdef.coeff:0;
+        const est=units*coeff;
+        grandTotal+=est; grandUnits+=units;
+        result.push({ store: store==="__ALL__"?"全部":store, type, units, coeff, est });
+      });
+    });
+    result.sort((a,b)=> (a.store===b.store? a.type.localeCompare(b.type,'zh'): a.store.localeCompare(b.store,'zh')));
+    lastResult={ result, grandTotal, groups, sKey:!!sKey, srcMode, unitLabel, rowDetails, rawCount:rawRows.length, matched, unmatched };
+    // 按当前数据源分别保存，供合并导出
+    savedResults[srcMode]={ result, grandTotal, groups, sKey:!!sKey, srcMode, unitLabel, rowDetails, rawCount:rawRows.length, matched, unmatched };
+    updateMergeStatus();
+
+    $("summary").innerHTML=`
+      <div class="stat"><div class="v">${fmt(grandTotal)}</div><div class="l">预估到店总人数</div></div>
+      <div class="stat"><div class="v">${rawRows.length}</div><div class="l">导入数据总行数</div></div>
+      <div class="stat"><div class="v">${matched}</div><div class="l">已匹配行数</div></div>
+      <div class="stat"><div class="v">${unmatched}</div><div class="l">未匹配行数</div></div>
+      <div class="stat"><div class="v">${fmt(grandUnits)}</div><div class="l">核销总${unitLabel}</div></div>`;
+
+    log("✓ 计算完成。","ok");
+    log("导入 "+rawRows.length+" 行，已匹配 "+matched+" 条，未匹配（无关键词/类型命中）"+unmatched+" 条"+(unmatched?"（未计入预估，请检查关键词或新增类型）":"。"));
+    if(unmatched) log("未匹配样本："+unmatchedSamples.join(" | "),"warn");
+    renderResultTables(result, groups, unitLabel, sKey, rowDetails, iKey, sKey);
+    $("resultCard").classList.remove("hidden");
+  });
+
+  function renderResultTables(result, groups, unitLabel, sKey, rowDetails){
+    const container=$("resultTables"); container.innerHTML="";
+    if(sKey){
+      const storeTotals=new Map();
+      result.forEach(r=> storeTotals.set(r.store,(storeTotals.get(r.store)||0)+r.est));
+      const h=document.createElement("h3"); h.style.fontSize="14px"; h.textContent="按门店汇总";
+      const tbl=document.createElement("table");
+      tbl.innerHTML=`<thead><tr><th>门店</th><th class="num">预估到店人数</th></tr></thead><tbody>`+
+        [...storeTotals.entries()].sort((a,b)=>b[1]-a[1]).map(([s,v])=>`<tr><td>${escapeHtml(s)}</td><td class="num">${fmt(v)}</td></tr>`).join("")+`</tbody>`;
+      container.appendChild(h); container.appendChild(tbl);
+    }
+    const h2=document.createElement("h3"); h2.style.fontSize="14px"; h2.textContent="明细（类型 × 门店）";
+    container.appendChild(h2);
+    const tbl2=document.createElement("table");
+    tbl2.innerHTML=`<thead><tr><th>${sKey?"门店":"维度"}</th><th>商品类型</th><th class="num">核销${unitLabel}</th><th class="num">系数</th><th class="num">预估人数</th></tr></thead><tbody>`+
+      result.map(r=>`<tr><td>${escapeHtml(r.store)}</td><td>${escapeHtml(r.type)}</td><td class="num">${fmt(r.units)}</td><td class="num">${r.coeff}</td><td class="num">${fmt(r.est)}</td></tr>`).join("")+`</tbody>`;
+    container.appendChild(tbl2);
+
+    // 按种类统计数量（团购核心缺失项：每种类型的笔数/总人数）
+    const kindMap=new Map();
+    result.forEach(r=>{
+      if(!kindMap.has(r.type)) kindMap.set(r.type,{units:0,est:0});
+      const k=kindMap.get(r.type); k.units+=r.units; k.est+=r.est;
+    });
+    const hk=document.createElement("h3"); hk.style.fontSize="14px"; hk.style.marginTop="18px";
+    hk.textContent="按种类统计数量（共 "+kindMap.size+" 种）";
+    container.appendChild(hk);
+    const tblK=document.createElement("table");
+    tblK.innerHTML=`<thead><tr><th>商品类型</th><th class="num">核销${unitLabel}</th><th class="num">预估人数</th></tr></thead><tbody>`+
+      [...kindMap.entries()].map(([t,k])=>`<tr><td>${escapeHtml(t)}</td><td class="num">${fmt(k.units)}</td><td class="num">${fmt(k.est)}</td></tr>`).join("")+
+      `<tr style="font-weight:700;background:#f1f5f9"><td>合计</td><td class="num">${fmt(grandUnits)}</td><td class="num">${fmt(grandTotal)}</td></tr>`+
+      `</tbody>`;
+    container.appendChild(tblK);
+
+    // 逐行核销明细：把导入的每一行都列出来，证明全部统计，并展示归类与人数
+    if(rowDetails && rowDetails.length){
+      const h3=document.createElement("h3"); h3.style.fontSize="14px"; h3.style.marginTop="18px";
+      h3.textContent="逐行核销明细（共 "+rowDetails.length+" 行，每行=1笔核销）";
+      container.appendChild(h3);
+      const tbl3=document.createElement("table");
+      tbl3.innerHTML=`<thead><tr><th>#</th><th>${sKey?"门店":"维度"}</th><th>商品信息</th><th>归类</th><th>命中词</th><th class="num">人数</th></tr></thead><tbody>`+
+        rowDetails.map((d,idx)=>{
+          const matchedCls=!!d.cls;
+          const est=matchedCls? d.coeff : 0;
+          return `<tr>
+            <td class="num">${idx+1}</td>
+            <td>${escapeHtml(d.store==="__ALL__"?"全部":d.store)}</td>
+            <td>${escapeHtml(String(d.info||"").slice(0,60))}</td>
+            <td>${matchedCls?`<span class="badge ok">${escapeHtml(d.cls)}</span>`:`<span class="badge warn">未匹配</span>`}</td>
+            <td>${escapeHtml(d.kw||"—")}</td>
+            <td class="num">${matchedCls?est:0}</td>
+          </tr>`;
+        }).join("")+`</tbody>`;
+      container.appendChild(tbl3);
+    }
+  }
+
+  // 合并状态指示
+  function updateMergeStatus(){
+    const set=(id,ok,label)=>{
+      const el=$(id); const dot=el.querySelector(".dot");
+      dot.style.background=ok?"var(--ok)":"#d1d5db";
+      el.lastChild.textContent=" "+label;
+    };
+    const g=savedResults.group, d=savedResults.douyin;
+    set("pillGroup",!!g, g?("团购：已计算 "+fmt(g.grandTotal)+" 人"):"团购：未计算");
+    set("pillDouyin",!!d, d?("抖音：已计算 "+fmt(d.grandTotal)+" 人"):"抖音：未计算");
+    $("mergeBtn").disabled=!(g||d);
+  }
+
+  // 导出
+  $("exportBtn").addEventListener("click",()=>{
+    if(!lastResult || typeof XLSX==="undefined"){ alert("暂无结果或解析库未加载，无法导出。"); return; }
+    const u=lastResult.unitLabel;
+    const aoa=[];
+    aoa.push([lastResult.sKey?"门店":"维度","商品类型","核销"+u,"系数","预估人数"]);
+    lastResult.result.forEach(r=> aoa.push([r.store,r.type,r.units,r.coeff,r.est]));
+    aoa.push([]); aoa.push(["预估到店总人数","","","",lastResult.grandTotal]);
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"预估结果");
+    const ts=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+    XLSX.writeFile(wb,"门店到店人数预估_"+ts+".xlsx");
+  });
+
+  // 合并导出：团购 + 抖音 结果合并成一个 Excel（多个 sheet + 汇总）
+  $("mergeBtn").addEventListener("click",()=>{
+    if(typeof XLSX==="undefined"){ alert("解析库未加载，无法导出。"); return; }
+    const g=savedResults.group, d=savedResults.douyin;
+    if(!(g||d)){ alert("请先分别计算团购和/或抖音的结果。"); return; }
+    const ts=new Date().toISOString().slice(0,19).replace(/[:T]/g,"-");
+    const wb=XLSX.utils.book_new();
+
+    // 各来源明细 sheet
+    function pushDetailSheet(name,res){
+      if(!res) return;
+      const u=res.unitLabel;
+      const aoa=[[res.sKey?"门店":"维度","商品类型","核销"+u,"系数","预估人数"]];
+      res.result.forEach(r=> aoa.push([r.store,r.type,r.units,r.coeff,r.est]));
+      aoa.push([]); aoa.push(["预估到店总人数","","","",res.grandTotal]);
+      const ws=XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb,ws,name);
+    }
+    pushDetailSheet("团购明细",g);
+    pushDetailSheet("抖音明细",d);
+
+    // 合并汇总 sheet：按类型汇总两种来源的笔数/数量 + 人数
+    const mergeMap=new Map(); // type -> {groupUnits,groupEst,douyinUnits,douyinEst}
+    function addTo(res,srcKey){
+      if(!res) return;
+      res.result.forEach(r=>{
+        if(!mergeMap.has(r.type)) mergeMap.set(r.type,{groupUnits:0,groupEst:0,douyinUnits:0,douyinEst:0});
+        const m=mergeMap.get(r.type);
+        if(srcKey==="group"){ m.groupUnits+=r.units; m.groupEst+=r.est; }
+        else { m.douyinUnits+=r.units; m.douyinEst+=r.est; }
+      });
+    }
+    addTo(g,"group"); addTo(d,"douyin");
+
+    const sumAoa=[
+      ["商品类型","团购核销笔数","团购预估人数","抖音核销笔数","抖音预估人数","合计预估人数"]
+    ];
+    let tG=0,tD=0,tAll=0;
+    [...mergeMap.entries()].sort((a,b)=>a[0].localeCompare(b[0],'zh')).forEach(([t,m])=>{
+      const all=m.groupEst+m.douyinEst;
+      tG+=m.groupEst; tD+=m.douyinEst; tAll+=all;
+      sumAoa.push([t, m.groupUnits, m.groupEst, m.douyinUnits, m.douyinEst, all]);
+    });
+    sumAoa.push([]);
+    sumAoa.push(["合计", "", tG, "", tD, tAll]);
+    const sumWs=XLSX.utils.aoa_to_sheet(sumAoa);
+    XLSX.utils.book_append_sheet(wb,sumWs,"合并汇总");
+
+    XLSX.writeFile(wb,"门店人数预估_团购+抖音_合并_"+ts+".xlsx");
+    log("✓ 已导出合并 Excel：含 团购明细、抖音明细、合并汇总 三个 sheet，总预估人数 "+fmt(tAll)+" 人。","ok");
+  });
+
+  // 示例模板：按数据源给不同模板
+  $("sampleBtn").addEventListener("click",()=>{
+    if(typeof XLSX==="undefined"){ alert("解析库未加载，无法生成模板。"); return; }
+    let aoa;
+    if(srcMode==="group"){
+      aoa=[
+        ["商品信息","商品类型","券号","订单编号","消费金额","消费时间","验证门店","分店城市","手机号"],
+        ["开业特惠双人全天不限时畅玩拼豆电玩K歌棋牌桌游[39.90元][1]","团购","A1","O1","¥39.90","2026-07-12 20:56:25","书答水游戏小屋·拼豆·K歌·棋牌","东莞","136****7761"],
+        ["欢唱套餐KTV包厢3小时[99元][2]","团购","A2","O2","¥99.00","2026-07-12 21:00:00","书答水游戏小屋·拼豆·K歌·棋牌","东莞","137****0000"],
+        ["麻将房2小时棋牌畅玩[59元][3]","团购","A3","O3","¥59.00","2026-07-12 22:00:00","书答水游戏小屋·拼豆·K歌·棋牌","东莞","138****0000"],
+        ["开业特惠单人全天不限时畅玩[19.90元][4]","团购","A4","O4","¥19.90","2026-07-12 20:00:00","城东分店","东莞","139****0000"],
+      ];
+    } else {
+      aoa=[
+        ["商品名称","验证门店","核销时间"],
+        ["双人券·全天畅玩套餐","书答水游戏小屋·拼豆·K歌·棋牌","2026-07-12 20:56:25"],
+        ["KTV欢唱3小时","书答水游戏小屋·拼豆·K歌·棋牌","2026-07-12 21:00:00"],
+        ["麻将房棋牌2小时","城东分店","2026-07-12 22:00:00"],
+      ];
+    }
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"示例");
+    XLSX.writeFile(wb,"示例模板_"+ (srcMode==="group"?"团购":"抖音") +"核销.xlsx");
+  });
+
+  $("addCoeff").addEventListener("click",()=>{ typeList.push({name:"",priority:99,keywords:[],coeff:1}); renderTypes(); });
+  $("resetCoeff").addEventListener("click",()=>{ typeList=JSON.parse(JSON.stringify(srcMode==="group"?DEFAULT_GROUP:DEFAULT_DOUYIN)); renderTypes(); });
+
+  // ===== 每日核销汇总（按日期：券数 + 预计到店人数 + 18:00后）=====
+  let dailyStats = {}; // date -> {date, dyCoupons, dyPeople, dyAfter18, mtCoupons, mtPeople, mtAfter18}
+
+  function parseDateTime(v){
+    if(v==null || v==="") return null;
+
+    // JS Date 对象（SheetJS 默认会把 Excel 日期转成 Date）
+    if(v instanceof Date && !isNaN(v.getTime())){
+      const yyyy=v.getFullYear(), mm=String(v.getMonth()+1).padStart(2,"0"), dd=String(v.getDate()).padStart(2,"0");
+      return { date:`${yyyy}-${mm}-${dd}`, hour: v.getHours() + v.getMinutes()/60 + v.getSeconds()/3600 };
+    }
+
+    // Excel 日期序列号（数值）：Excel 1900 日期系统
+    if(typeof v==="number" && !isNaN(v) && v>0 && v<2958466){
+      // serial 1 = 1900-01-01；Excel 错误地把 1900 当闰年，serial 60 对应不存在的 1900-02-29
+      const epoch = new Date(Date.UTC(1899, 11, 30));
+      let days = Math.floor(v);
+      if(days <= 59) days += 1;       // serial 1 -> 1900-01-01
+      else if(days === 60) days = 61; // 跳过不存在的 1900-02-29，映射到 1900-03-01
+      const ms = (v - Math.floor(v)) * 86400000;
+      const d = new Date(epoch.getTime() + days * 86400000 + ms);
+      const yyyy=d.getUTCFullYear(), mm=String(d.getUTCMonth()+1).padStart(2,"0"), dd=String(d.getUTCDate()).padStart(2,"0");
+      const h=d.getUTCHours(), min=d.getUTCMinutes();
+      return { date:`${yyyy}-${mm}-${dd}`, hour: h + min/60 };
+    }
+
+    const s=String(v).trim();
+
+    // 常见中文格式：
+    // 2026-07-13 18:05:56 / 2026/07/13 18:05 / 2026.07.13 18:05:56
+    // 2026年07月13日 20时56分25秒 / 2026年7月13日20:56
+    const m=s.match(/(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})[日\s]*(?:(\d{1,2})[时:](\d{2})(?:[分:](\d{2})[秒]?)?)?/);
+    if(m){
+      const h=parseInt(m[4]||"0",10), min=parseInt(m[5]||"0",10), sec=parseInt(m[6]||"0",10);
+      const date=`${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+      return { date, hour: h + min/60 + sec/3600 };
+    }
+
+    // ISO / 标准字符串
+    const d=new Date(s);
+    if(!isNaN(d.getTime())){
+      const yyyy=d.getFullYear(), mm=String(d.getMonth()+1).padStart(2,"0"), dd=String(d.getDate()).padStart(2,"0");
+      return { date:`${yyyy}-${mm}-${dd}`, hour: d.getHours() + d.getMinutes()/60 + d.getSeconds()/3600 };
+    }
+    return null;
+  }
+
+  function findCol(keys, names){
+    const list=String(names||"").split(",").map(s=>s.trim()).filter(Boolean);
+    for(const n of list){
+      const exact=keys.find(k=>k.trim()===n);
+      if(exact) return exact;
+      const lower=n.toLowerCase();
+      const found=keys.find(k=>{
+        const kl=k.trim().toLowerCase();
+        return kl.includes(lower)||lower.includes(kl);
+      });
+      if(found) return found;
+    }
+    return null;
+  }
+
+  // 对单个文件按行处理，返回按日期聚合对象
+  function processDailyRows(rows, mode, infoNames, timeNames, fileDate){
+    if(!rows||!rows.length) return {};
+    const keys=Object.keys(rows[0]);
+    const iKey=findCol(keys, infoNames);
+    const tKey=findCol(keys, timeNames);
+    const res={}; // date -> {coupons, people, after18}
+    let matched=0, unmatched=0, blankTime=0;
+    const samples=[]; // 调试用：记录前几条时间解析结果
+    rows.forEach(r=>{
+      if(!iKey) return;
+      const info=String(r[iKey]||"");
+      const cg=classifyGroup(info);
+      if(!cg){ unmatched++; return; }
+      const rawTime=tKey ? r[tKey] : null;
+      // 有时间列但值为空：表示未核销，不计入
+      if(tKey && (rawTime==null || String(rawTime).trim()==="")){
+        blankTime++;
+        return;
+      }
+      matched++;
+      const qty = 1;
+      if(qty<=0) return;
+      const c=typeList.find(x=>x.name===cg.name);
+      const coeff=c? c.coeff : 0;
+      const people=qty * coeff;
+      const dt=tKey ? parseDateTime(rawTime) : null;
+      if(samples.length<3 && tKey && rawTime!=null && rawTime!==""){
+        samples.push({ raw: rawTime, parsed: dt ? `${dt.date} ${dt.hour.toFixed(2)}h` : "解析失败" });
+      }
+      const date=dt?dt.date:(fileDate||"未知日期");
+      if(!res[date]) res[date]={coupons:0, people:0, after18:0};
+      res[date].coupons += qty;
+      res[date].people += people;
+      if(dt && dt.hour>=18) res[date].after18 += people;
+    });
+    return { byDate: res, matched, unmatched, blankTime, iKey, tKey, samples };
+  }
+
+  async function readFiles(fileList){
+    const out=[];
+    for(const f of fileList){
+      const buf=await f.arrayBuffer();
+      const wb=XLSX.read(new Uint8Array(buf),{type:"array"});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
+      out.push({name:f.name, rows});
+    }
+    return out;
+  }
+
+  function parseFileDate(name){
+    const m=name.match(/(\d{4})[-/年.](\d{1,2})[-/月.](\d{1,2})/);
+    if(m) return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+    return null;
+  }
+
+  function logDaily(msg,type){
+    const el=$("dailyLog");
+    const d=document.createElement("div"); d.textContent=msg;
+    if(type==="warn")d.style.color="var(--warn)"; if(type==="danger")d.style.color="var(--danger)"; if(type==="ok")d.style.color="var(--ok)";
+    el.appendChild(d);
+  }
+  function clearDailyLog(){ $("dailyLog").innerHTML=""; }
+
+  $("calcDailyBtn").addEventListener("click",async()=>{
+    clearDailyLog();
+    if(typeof XLSX==="undefined"){ logDaily("✗ 解析库未加载。","danger"); return; }
+    const mtFiles=$("mtInput").files;
+    const dyFiles=$("dyInput").files;
+    if(!mtFiles.length && !dyFiles.length){ logDaily("✗ 请至少上传一个美团或抖音核销明细文件。","danger"); return; }
+    dailyStats={};
+    let totalFiles=0;
+    const merge=(mode, fileDate, byDate)=>{
+      for(const [date,vals] of Object.entries(byDate)){
+        const key=date==="未知日期" && fileDate ? fileDate : date;
+        if(!dailyStats[key]) dailyStats[key]={date:key, dyCoupons:0, dyPeople:0, dyAfter18:0, mtCoupons:0, mtPeople:0, mtAfter18:0};
+        const s=dailyStats[key];
+        if(mode==="douyin"){ s.dyCoupons+=vals.coupons; s.dyPeople+=vals.people; s.dyAfter18+=vals.after18; }
+        else { s.mtCoupons+=vals.coupons; s.mtPeople+=vals.people; s.mtAfter18+=vals.after18; }
+      }
+    };
+
+    if(mtFiles.length){
+      const files=await readFiles(mtFiles);
+      const info=$("mtInfoCol").value, time=$("mtTimeCol").value;
+      for(const f of files){
+        if(!f.rows.length){ logDaily("⚠ "+f.name+" 无数据，跳过。","warn"); continue; }
+        const fileDate=parseFileDate(f.name);
+        const pr=processDailyRows(f.rows, "meituan", info, time, fileDate);
+        merge("meituan", fileDate, pr.byDate);
+        totalFiles++;
+        logDaily(`✓ 美团 ${f.name} → 匹配 ${pr.matched} 行，未匹配 ${pr.unmatched} 行，空白时间(未核销) ${pr.blankTime||0} 行`+(fileDate?`（文件日期 ${fileDate}）`:""),"ok");
+        if(pr.samples && pr.samples.length){
+          pr.samples.forEach((s,i)=> logDaily(`  时间样例#${i+1}：${JSON.stringify(s.raw)} → ${s.parsed}`));
+        }
+        if(!pr.iKey) logDaily("⚠ 未找到美团商品信息列，请检查列名设置。","warn");
+        if(!pr.tKey) logDaily("⚠ 未找到美团消费时间列，18:00 后人数可能缺失。","warn");
+      }
+    }
+    if(dyFiles.length){
+      const files=await readFiles(dyFiles);
+      const info=$("dyInfoCol").value, time=$("dyTimeCol").value;
+      for(const f of files){
+        if(!f.rows.length){ logDaily("⚠ "+f.name+" 无数据，跳过。","warn"); continue; }
+        const fileDate=parseFileDate(f.name);
+        const pr=processDailyRows(f.rows, "douyin", info, time, fileDate);
+        merge("douyin", fileDate, pr.byDate);
+        totalFiles++;
+        logDaily(`✓ 抖音 ${f.name} → 匹配 ${pr.matched} 行，未匹配 ${pr.unmatched} 行，空白时间(未核销) ${pr.blankTime||0} 行`+(fileDate?`（文件日期 ${fileDate}）`:""),"ok");
+        if(pr.samples && pr.samples.length){
+          pr.samples.forEach((s,i)=> logDaily(`  时间样例#${i+1}：${JSON.stringify(s.raw)} → ${s.parsed}`));
+        }
+        if(!pr.iKey) logDaily("⚠ 未找到抖音商品名称列，请检查列名设置。","warn");
+      }
+    }
+    renderDailyTable();
+    logDaily(`汇总完成，共处理 ${totalFiles} 个文件。`+(Object.keys(dailyStats).length?"":" 未产生有效数据，请检查列名与文件内容。"), Object.keys(dailyStats).length?"ok":"warn");
+  });
+
+  function renderDailyTable(){
+    const box=$("dailyTableBox");
+    const dates=Object.keys(dailyStats).sort();
+    if(!dates.length){ box.classList.add("hidden"); $("exportDailyBtn").disabled=true; $("copyDailyBtn").disabled=true; return; }
+    box.classList.remove("hidden");
+    $("exportDailyBtn").disabled=false;
+    $("copyDailyBtn").disabled=false;
+    let tDy=0, tMt=0, tAll=0, tPpl=0, tAfter=0;
+    let html=`<h3 style="font-size:14px;">每日订单数对比（共 ${dates.length} 天）</h3>
+      <table id="dailyTable"><thead><tr><th>日期</th><th class="num">抖音核销订单</th><th class="num">美团核销订单</th><th class="num">总核销数</th><th class="num">预计到店人数</th><th class="num">六点之后到店人数</th></tr></thead><tbody>`;
+    dates.forEach(d=>{
+      const s=dailyStats[d];
+      const total=s.dyCoupons+s.mtCoupons;
+      const people=s.dyPeople+s.mtPeople;
+      const after=s.dyAfter18+s.mtAfter18;
+      tDy+=s.dyCoupons; tMt+=s.mtCoupons; tAll+=total; tPpl+=people; tAfter+=after;
+      html+=`<tr><td>${fmtMD(d)}</td><td class="num">${fmt(s.dyCoupons)}</td><td class="num">${fmt(s.mtCoupons)}</td><td class="num">${fmt(total)}</td><td class="num">${fmt(people)}</td><td class="num">${fmt(after)}</td></tr>`;
+    });
+    html+=`<tr style="font-weight:700;background:#f1f5f9"><td>合计</td><td class="num">${fmt(tDy)}</td><td class="num">${fmt(tMt)}</td><td class="num">${fmt(tAll)}</td><td class="num">${fmt(tPpl)}</td><td class="num">${fmt(tAfter)}</td></tr></tbody></table>`;
+    box.innerHTML=html;
+  }
+
+  $("exportDailyBtn").addEventListener("click",()=>{
+    if(typeof XLSX==="undefined"||!Object.keys(dailyStats).length){ alert("暂无可导出的汇总数据。"); return; }
+    const aoa=[["日期","抖音核销订单","美团核销订单","总核销数","预计到店人数","六点之后到店人数"]];
+    Object.keys(dailyStats).sort().forEach(d=>{
+      const s=dailyStats[d];
+      aoa.push([fmtMD(d), s.dyCoupons, s.mtCoupons, s.dyCoupons+s.mtCoupons, s.dyPeople+s.mtPeople, s.dyAfter18+s.mtAfter18]);
+    });
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"每日汇总");
+    const ts=new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb,"每日订单数对比_"+ts+".xlsx");
+  });
+
+  // 复制为飞书文档可粘贴的表格
+  $("copyDailyBtn").addEventListener("click",async()=>{
+    if(!Object.keys(dailyStats).length){ alert("暂无可复制的汇总数据。"); return; }
+    const table=$("dailyTable");
+    if(!table){ alert("未找到表格。"); return; }
+    try{
+      if(navigator.clipboard && window.ClipboardItem){
+        const htmlBlob=new Blob([table.outerHTML],{type:"text/html"});
+        const textBlob=new Blob([tableToText(table)],{type:"text/plain"});
+        await navigator.clipboard.write([new ClipboardItem({"text/html":htmlBlob,"text/plain":textBlob})]);
+        alert("已复制为表格格式，可直接粘贴到飞书文档。");
+      } else {
+        throw new Error("浏览器不支持富文本复制");
+      }
+    }catch(e){
+      // 降级：复制文本表格
+      const text=tableToText(table);
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        await navigator.clipboard.writeText(text);
+        alert("已复制为文本表格，粘贴到飞书文档后会自动识别为表格。");
+      } else {
+        prompt("请手动复制以下表格内容：", text);
+      }
+    }
+  });
+
+  function tableToText(table){
+    const rows=Array.from(table.querySelectorAll("tr"));
+    return rows.map(tr=>Array.from(tr.querySelectorAll("th,td")).map(c=>c.textContent.trim()).join("\t")).join("\n");
+  }
+
+  // 导入历史汇总表：日期、抖音核销订单、美团核销订单、总核销数、预计到店人数、六点之后到店人数
+  $("loadDailyBtn").addEventListener("click",()=>{
+    const inp=document.createElement("input"); inp.type="file"; inp.accept=".xlsx,.xls";
+    inp.onchange=async()=>{
+      const f=inp.files[0]; if(!f) return;
+      try{
+        const buf=await f.arrayBuffer();
+        const wb=XLSX.read(new Uint8Array(buf),{type:"array"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
+        dailyStats={};
+        rows.forEach(r=>{
+          const d=String(r["日期"]||"");
+          if(!d) return;
+          const dy=parseFloat(r["抖音核销订单"]||r["抖音核销券数"])||0;
+          const mt=parseFloat(r["美团核销订单"]||r["美团核销券数"])||0;
+          const ppl=parseFloat(r["预计到店人数"])||0;
+          const aft=parseFloat(r["六点之后到店人数"]||r["六点之后到店人数增长情况"])||0;
+          dailyStats[d]={date:d, dyCoupons:dy, dyPeople:ppl-aft>=0?ppl-aft:ppl, dyAfter18:aft, mtCoupons:mt, mtPeople:0, mtAfter18:0};
+        });
+        renderDailyTable();
+        clearDailyLog();
+        logDaily("✓ 已导入历史汇总表，共 "+Object.keys(dailyStats).length+" 天。","ok");
+      }catch(err){ alert("导入失败："+err.message); }
+    };
+    inp.click();
+  });
+
+  // 初始化
+  renderTypes(); applySrcUI(); updateMergeStatus();
+})();
+</script>
+</body>
+</html>
