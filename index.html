@@ -98,7 +98,8 @@
     <div class="note" style="margin-top:10px;">
       说明：1) 文件名含日期会优先识别为当日；否则取表内「消费/核销时间」的日期。2) 撤销核销的行也会计入（只要表格里有这一行就算）。3) 美团每行视为 1 个核销订单；抖音每条=1个核销订单（不管购买数量）。4) 18:00 之后到店人数按消费/核销时间 ≥ 18:00 累加。5) 总核销数 = 抖音核销订单 + 美团核销订单。
     </div>
-    <div id="dailyLog" class="log"></div>
+    <div id="dailyDiag" class="hidden" style="margin-top:12px;"></div>
+    <div class="log" id="dailyLog"></div>
     <div id="dailyTableBox" class="hidden" style="margin-top:14px;"></div>
   </section>
 
@@ -326,6 +327,64 @@
     });
   }
 
+  // 某些导出的 xlsx 会把 <dimension>/!ref 写成只有一行，导致 SheetJS 只读到一行。
+  // 根据工作表实际存在的单元格修复 !ref，让后续 sheet_to_json 读到完整数据。
+  function fixSheetRange(ws){
+    if(!ws || !ws['!ref']) return;
+    const range=XLSX.utils.decode_range(ws['!ref']);
+    let maxR=range.e.r, maxC=range.e.c, hasData=false;
+    Object.keys(ws).forEach(k=>{
+      if(k[0]==='!') return;
+      try{ const cell=XLSX.utils.decode_cell(k); if(cell.r>maxR) maxR=cell.r; if(cell.c>maxC) maxC=cell.c; hasData=true; }catch(_){}
+    });
+    if(hasData && (maxR>range.e.r || maxC>range.e.c)){
+      range.e.r=maxR; range.e.c=maxC;
+      ws['!ref']=XLSX.utils.encode_range(range);
+    }
+  }
+
+  // 读取并返回诊断信息：包括 sheet 名、!ref、修复前后行数、表头等
+  async function diagnoseFile(file){
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(new Uint8Array(buf),{type:"array"});
+    const sheetName=wb.SheetNames[0];
+    const ws=wb.Sheets[sheetName];
+    const refBefore=ws['!ref']||"未知";
+    const rowsBefore=XLSX.utils.sheet_to_json(ws,{defval:""}).length;
+    fixSheetRange(ws);
+    const refAfter=ws['!ref']||"未知";
+    const rowsAfter=XLSX.utils.sheet_to_json(ws,{defval:""}).length;
+    const keys=rowsAfter>0?Object.keys(XLSX.utils.sheet_to_json(ws,{defval:""})[0]):[];
+    const sample=rowsAfter>0?JSON.stringify(XLSX.utils.sheet_to_json(ws,{defval:""})[0]).slice(0,200):"";
+    return { fileName:file.name, sheetName, refBefore, refAfter, rowsBefore, rowsAfter, keys, sample, version: XLSX.version||"未知" };
+  }
+
+  function showDailyDiag(items){
+    const box=$("dailyDiag"); box.innerHTML=""; box.classList.remove("hidden");
+    items.forEach(d=>{
+      if(d.error){
+        const div=document.createElement("div");
+        div.className="note";
+        div.style.cssText="background:#fff1f2;border-color:#fecdd3;color:#9f1239;";
+        div.innerHTML=`<b>诊断：${escapeHtml(d.fileName)}</b>（SheetJS ${escapeHtml(d.version)}）<br/>✗ 读取失败：${escapeHtml(d.error)}`;
+        box.appendChild(div); return;
+      }
+      const warn = d.rowsAfter<=1;
+      const fixed = d.rowsAfter>d.rowsBefore;
+      const div=document.createElement("div");
+      div.className="note";
+      div.style.cssText=warn?"background:#fff1f2;border-color:#fecdd3;color:#9f1239;":"background:#f0f9ff;border-color:#bae6fd;color:#0c4a6e;";
+      div.innerHTML=`<b>诊断：${escapeHtml(d.fileName)}</b>（SheetJS ${escapeHtml(d.version)}）<br/>
+        工作表：${escapeHtml(d.sheetName||"—")}；文件声明范围：${escapeHtml(d.refBefore||"—")}`+
+        (fixed?` → 自动修复为：${escapeHtml(d.refAfter||"—")}`:`；无需修复范围`)+`<br/>
+        解析行数：${d.rowsBefore}${fixed?` → 修复后：${d.rowsAfter}`:`行`}；表头：${escapeHtml((d.keys||[]).join("、")||"无")}<br/>`+
+        (d.sample?`首行样例：${escapeHtml(d.sample)}`:`<i>无数据样例</i>`)+`<br/>`+
+        (warn?`<b>⚠ 仍然只读到 ${d.rowsAfter} 行。</b> 如果实际不止这些行，请用 Excel/WPS 打开文件后「另存为」一份新的 .xlsx 再上传。`:
+         fixed?`✓ 已自动扩展工作表范围，共读取 ${d.rowsAfter} 行。`:`✓ 读取正常。`);
+      box.appendChild(div);
+    });
+  }
+
   // 文件解析
   $("fileInput").addEventListener("change",(e)=>{
     const f=e.target.files[0];
@@ -337,6 +396,7 @@
       try{
         const wb=XLSX.read(new Uint8Array(ev.target.result),{type:"array"});
         const ws=wb.Sheets[wb.SheetNames[0]];
+        fixSheetRange(ws);
         rawRows=XLSX.utils.sheet_to_json(ws,{defval:""});
         if(!rawRows.length){ log("⚠ 文件中没有可读的数据行。","danger"); $("calcBtn").disabled=true; return; }
         log("✓ 已读取 "+rawRows.length+" 行数据。表头："+Object.keys(rawRows[0]).join("、"),"ok");
@@ -784,6 +844,7 @@
       const buf=await f.arrayBuffer();
       const wb=XLSX.read(new Uint8Array(buf),{type:"array"});
       const ws=wb.Sheets[wb.SheetNames[0]];
+      fixSheetRange(ws);
       const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
       out.push({name:f.name, rows});
     }
@@ -803,6 +864,22 @@
     el.appendChild(d);
   }
   function clearDailyLog(){ $("dailyLog").innerHTML=""; }
+
+  // 选择美团/抖音文件后立即显示诊断，便于发现「只读到一行」等问题
+  async function runDailyDiag(){
+    if(typeof XLSX==="undefined") return;
+    const mtFiles=Array.from($("mtInput").files);
+    const dyFiles=Array.from($("dyInput").files);
+    if(!mtFiles.length && !dyFiles.length){ $("dailyDiag").classList.add("hidden"); return; }
+    $("dailyDiag").innerHTML="<div style='font-size:13px;color:var(--muted);margin-bottom:6px;'>正在检测文件…</div>";
+    $("dailyDiag").classList.remove("hidden");
+    const items=[];
+    for(const f of mtFiles){ try{ items.push(await diagnoseFile(f)); }catch(e){ items.push({fileName:f.name, rowsAfter:0, error:e.message, version:XLSX.version||"未知"}); } }
+    for(const f of dyFiles){ try{ items.push(await diagnoseFile(f)); }catch(e){ items.push({fileName:f.name, rowsAfter:0, error:e.message, version:XLSX.version||"未知"}); } }
+    showDailyDiag(items);
+  }
+  $("mtInput").addEventListener("change",runDailyDiag);
+  $("dyInput").addEventListener("change",runDailyDiag);
 
   $("calcDailyBtn").addEventListener("click",async()=>{
     clearDailyLog();
