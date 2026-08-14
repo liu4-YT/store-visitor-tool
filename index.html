@@ -734,13 +734,25 @@
     const iKey=findCol(keys, infoNames);
     const tKey=findCol(keys, timeNames);
     const res={}; // date -> {coupons, people, after18}
-    let matched=0, unmatched=0, blankTime=0;
+    let matched=0, unmatched=0, blankTime=0, filledInfo=0;
     const samples=[]; // 调试用：记录前几条时间解析结果
+    const unmatchedSamples=[]; // 未匹配样例
+    let lastInfo=""; // 合并单元格时沿用上一行商品信息
     rows.forEach(r=>{
       if(!iKey) return;
-      const info=String(r[iKey]||"");
+      let info=String(r[iKey]||"");
+      if(info.trim()==="" && lastInfo!==""){
+        info=lastInfo;
+        filledInfo++;
+      } else if(info.trim()!==""){
+        lastInfo=info;
+      }
       const cg=classifyGroup(info);
-      if(!cg){ unmatched++; return; }
+      if(!cg){
+        unmatched++;
+        if(unmatchedSamples.length<3) unmatchedSamples.push(info);
+        return;
+      }
       const rawTime=tKey ? r[tKey] : null;
       // 有时间列但值为空：表示未核销，不计入
       if(tKey && (rawTime==null || String(rawTime).trim()==="")){
@@ -763,7 +775,7 @@
       res[date].people += people;
       if(dt && dt.hour>=18) res[date].after18 += people;
     });
-    return { byDate: res, matched, unmatched, blankTime, iKey, tKey, samples };
+    return { byDate: res, matched, unmatched, blankTime, filledInfo, iKey, tKey, samples, unmatchedSamples, totalRows: rows.length };
   }
 
   async function readFiles(fileList){
@@ -819,9 +831,12 @@
         const pr=processDailyRows(f.rows, "meituan", info, time, fileDate);
         merge("meituan", fileDate, pr.byDate);
         totalFiles++;
-        logDaily(`✓ 美团 ${f.name} → 匹配 ${pr.matched} 行，未匹配 ${pr.unmatched} 行，空白时间(未核销) ${pr.blankTime||0} 行`+(fileDate?`（文件日期 ${fileDate}）`:""),"ok");
+        logDaily(`✓ 美团 ${f.name} → Excel 共 ${pr.totalRows||0} 行，匹配 ${pr.matched} 行，未匹配 ${pr.unmatched} 行，空白时间(未核销) ${pr.blankTime||0} 行，自动填充 ${pr.filledInfo||0} 行`+(fileDate?`（文件日期 ${fileDate}）`:""),"ok");
         if(pr.samples && pr.samples.length){
           pr.samples.forEach((s,i)=> logDaily(`  时间样例#${i+1}：${JSON.stringify(s.raw)} → ${s.parsed}`));
+        }
+        if(pr.unmatchedSamples && pr.unmatchedSamples.length){
+          pr.unmatchedSamples.forEach((s,i)=> logDaily(`  未匹配样例#${i+1}："${s.substring(0,60)}${s.length>60?'...':''}"`));
         }
         if(!pr.iKey) logDaily("⚠ 未找到美团商品信息列，请检查列名设置。","warn");
         if(!pr.tKey) logDaily("⚠ 未找到美团消费时间列，18:00 后人数可能缺失。","warn");
@@ -836,9 +851,12 @@
         const pr=processDailyRows(f.rows, "douyin", info, time, fileDate);
         merge("douyin", fileDate, pr.byDate);
         totalFiles++;
-        logDaily(`✓ 抖音 ${f.name} → 匹配 ${pr.matched} 行，未匹配 ${pr.unmatched} 行，空白时间(未核销) ${pr.blankTime||0} 行`+(fileDate?`（文件日期 ${fileDate}）`:""),"ok");
+        logDaily(`✓ 抖音 ${f.name} → Excel 共 ${pr.totalRows||0} 行，匹配 ${pr.matched} 行，未匹配 ${pr.unmatched} 行，空白时间(未核销) ${pr.blankTime||0} 行，自动填充 ${pr.filledInfo||0} 行`+(fileDate?`（文件日期 ${fileDate}）`:""),"ok");
         if(pr.samples && pr.samples.length){
           pr.samples.forEach((s,i)=> logDaily(`  时间样例#${i+1}：${JSON.stringify(s.raw)} → ${s.parsed}`));
+        }
+        if(pr.unmatchedSamples && pr.unmatchedSamples.length){
+          pr.unmatchedSamples.forEach((s,i)=> logDaily(`  未匹配样例#${i+1}："${s.substring(0,60)}${s.length>60?'...':''}"`));
         }
         if(!pr.iKey) logDaily("⚠ 未找到抖音商品名称列，请检查列名设置。","warn");
       }
